@@ -5,65 +5,68 @@
 #include <PubSubClient.h>
 #include <ThingSpeak.h>
 
-// --- Sensor Objects ---
-Adafruit_MLX90614 mlx = Adafruit_MLX90614();          // Temperature sensor
-PulseOximeter pox;                                     // Pulse Oximeter
+// MLX90614: Temperature sensor
+Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 
-// --- WiFi Configuration ---
+// MAX30100: Pulse oximeter (HR + SpO2)
+PulseOximeter pox;
+
+// Live data
+float bpm = 0.0, spo2 = 0.0;
+float temp_obj = 0.0, temp_amb = 0.0;
+
+// WiFi credentials
 const char* ssid = "realme 9 Pro+";
 const char* password = "69696969";
-WiFiClientSecure espClient;
-WiFiClient thingSpeakClient;
 
-// --- Azure IoT Hub Configuration ---
+// MQTT (Azure)
 const char* mqttServer = "MyProjectHub22.azure-devices.net";
 const int mqttPort = 8883;
 const char* deviceId = "1195";
 const char* sasToken = "SharedAccessSignature sr=MyProjectHub22.azure-devices.net%2Fdevices%2F1195&sig=pBIxloNUqwo8Ia8uF50YTw652cKbHLXooQkDXL3qJvc%3D&se=1732436672";
 const char* mqttTopic = "devices/1195/messages/events/";
-PubSubClient client(espClient);
 
-// --- ThingSpeak Configuration ---
+WiFiClientSecure espClient;
+PubSubClient mqttClient(espClient);
+WiFiClient thingSpeakClient;
+
+// ThingSpeak Config
 unsigned long myChannelNumber = 2669052;
-const char* myWriteAPIKey = "O0FHJWE26VR75S83";
+const char* myWriteAPIKey = "X472RER1LA9F60YU"; // Updated key
 
-// --- Timers ---
-uint32_t lastReportTime = 0;
-#define REPORTING_PERIOD_MS 5000
+// Timers
+uint32_t lastUpload = 0;
+#define REPORT_INTERVAL_MS 5000
 
-// --- Live Data Variables ---
-float bpm = 0.0, spo2 = 0.0;
-float temp_obj = 0.0, temp_amb = 0.0;
-
-// --- Beat Detection Callback ---
+// Beat detection callback
 void onBeatDetected() {
-  Serial.println("❤️ Beat detected!");
+  Serial.println("Beat detected.");
 }
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin(D2, D1);  // SDA = D2 (GPIO4), SCL = D1 (GPIO5)
+  Wire.begin(D2, D1); // ESP8266: SDA = D2, SCL = D1
 
-  // --- Initialize Temperature Sensor ---
-  Serial.print("Initializing MLX90614... ");
+  // MLX90614 initialization
+  Serial.print("Initializing temperature sensor... ");
   if (!mlx.begin()) {
-    Serial.println("Failed! Check connections.");
+    Serial.println("Failed to detect MLX90614.");
     while (1);
   }
   Serial.println("Success.");
 
-  // --- Initialize Pulse Oximeter ---
+  // MAX30100 initialization
   Serial.print("Initializing MAX30100... ");
   if (!pox.begin()) {
-    Serial.println("Failed! Check wiring.");
+    Serial.println("Failed. Check wiring.");
     while (1);
   }
   Serial.println("Success.");
   pox.setIRLedCurrent(MAX30100_LED_CURR_7_6MA);
   pox.setOnBeatDetectedCallback(onBeatDetected);
 
-  // --- Connect to WiFi ---
-  Serial.print("Connecting to WiFi");
+  // WiFi connection
+  Serial.println("Connecting to WiFi...");
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -71,69 +74,70 @@ void setup() {
   }
   Serial.println("\nWiFi connected. IP: " + WiFi.localIP().toString());
 
-  // --- Secure MQTT (TLS) ---
-  espClient.setInsecure(); // For development only
-
-  // --- Connect to Azure IoT Hub ---
-  client.setServer(mqttServer, mqttPort);
+  // MQTT (TLS) for Azure
+  espClient.setInsecure(); // for development without cert
+  mqttClient.setServer(mqttServer, mqttPort);
   String username = String(mqttServer) + "/" + deviceId + "/?api-version=2021-04-12";
-  Serial.print("Connecting to Azure IoT Hub... ");
-  if (client.connect(deviceId, username.c_str(), sasToken)) {
-    Serial.println("Success!");
+
+  Serial.println("Connecting to Azure IoT Hub...");
+  if (mqttClient.connect(deviceId, username.c_str(), sasToken)) {
+    Serial.println("Connected to Azure IoT Hub.");
   } else {
-    Serial.print("Failed. State: ");
-    Serial.println(client.state());
+    Serial.print("MQTT connection failed. Code: ");
+    Serial.println(mqttClient.state());
     while (1);
   }
 
-  // --- Initialize ThingSpeak ---
+  // ThingSpeak initialization
   ThingSpeak.begin(thingSpeakClient);
 }
 
 void loop() {
-  pox.update();  // Update pulse oximeter readings
+  pox.update(); // Update HR and SpO2
 
-  // --- Read Sensor Data ---
+  // Read current values
   bpm = pox.getHeartRate();
   spo2 = pox.getSpO2();
   temp_obj = mlx.readObjectTempC();
   temp_amb = mlx.readAmbientTempC();
 
-  // --- Print to Serial Monitor ---
-  Serial.println("=== LIVE DATA ===");
-  Serial.printf("💓 BPM: %.1f | SpO2: %.1f%%\n", bpm, spo2);
-  Serial.printf("🌡️ Body Temp: %.2f°C | Ambient Temp: %.2f°C\n", temp_obj, temp_amb);
-  Serial.println("==================");
+  // Display data
+  Serial.println("------ Live Data ------");
+  Serial.printf("BPM: %.1f | SpO2: %.1f%%\n", bpm, spo2);
+  Serial.printf("Object Temp: %.2f°C | Ambient Temp: %.2f°C\n", temp_obj, temp_amb);
+  Serial.println("------------------------");
 
-  // --- Every 5s: Upload to Cloud ---
-  if (millis() - lastReportTime > REPORTING_PERIOD_MS) {
-    // JSON Payload for Azure
+  // Upload every 5 seconds
+  if (millis() - lastUpload > REPORT_INTERVAL_MS) {
+    // Format payload for Azure IoT Hub
     String payload = String("{\"BPM\":") + bpm +
                      ",\"SpO2\":" + spo2 +
                      ",\"ObjectTemp\":" + temp_obj +
                      ",\"AmbientTemp\":" + temp_amb + "}";
 
-    if (client.publish(mqttTopic, payload.c_str())) {
-      Serial.println("📤 Sent to Azure IoT Hub.");
+    // Send to Azure
+    if (mqttClient.publish(mqttTopic, payload.c_str())) {
+      Serial.println("Data sent to Azure IoT Hub.");
     } else {
-      Serial.println("❌ Failed to send to Azure.");
+      Serial.println("Failed to send data to Azure.");
     }
 
-    // ThingSpeak Update
+    // Send to ThingSpeak
     ThingSpeak.setField(1, bpm);
     ThingSpeak.setField(2, spo2);
     ThingSpeak.setField(3, temp_obj);
     ThingSpeak.setField(4, temp_amb);
-
     int status = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+
     if (status == 200) {
-      Serial.println("✅ Data sent to ThingSpeak.");
+      Serial.println("Data sent to ThingSpeak.");
     } else {
-      Serial.println("❌ ThingSpeak update failed. Code: " + String(status));
+      Serial.println("ThingSpeak update failed. HTTP code: " + String(status));
     }
 
-    lastReportTime = millis();
+    lastUpload = millis();
   }
 
-  client.loop();  // Maintain MQTT connection
+  mqttClient.loop(); // Keep MQTT connection alive
+  delay(100);         // Avoid loop hogging
 }
