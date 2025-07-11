@@ -60,6 +60,16 @@ File Structure
 - `azure_thingspeak_setup.md` – Configuration for cloud services
 - `README.md` – Project documentation
 
+- Remeber to update
+
+- ssid	    Your Wi-Fi name
+password	  Your Wi-Fi password
+mqttServer	Azure IoT Hub name
+sasToken	  Your generated SAS token
+deviceId	  Registered device ID
+myWriteAPIKey	  Their ThingSpeak write key
+myChannelNumber	Their ThingSpeak channel ID
+
 Future Work
 
 - Add onboard alerts using vibration or LEDs
