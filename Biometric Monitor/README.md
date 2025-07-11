@@ -62,13 +62,15 @@ File Structure
 
 - Remeber to update
 
-- ssid	    Your Wi-Fi name
-password	  Your Wi-Fi password
-mqttServer	Azure IoT Hub name
-sasToken	  Your generated SAS token
-deviceId	  Registered device ID
-myWriteAPIKey	  Their ThingSpeak write key
-myChannelNumber	Their ThingSpeak channel ID
+| Field             | Value                       |
+| ----------------- | --------------------------- |
+| `ssid`            | Your Wi-Fi name             |
+| `password`        | Your Wi-Fi password         |
+| `mqttServer`      | Azure IoT Hub name          |
+| `sasToken`        | Your generated SAS token    |
+| `deviceId`        | Registered device ID        |
+| `myWriteAPIKey`   | Their ThingSpeak write key  |
+| `myChannelNumber` | Their ThingSpeak channel ID |
 
 Future Work
 
