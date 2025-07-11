@@ -6,7 +6,7 @@
 
 ## Project Structure
 
-### 1. biometric_monitor/
+### 1. biometric_monitor
 This module implements a wearable device for continuous biometric monitoring using the **MAX30100** (for heart rate and SpO₂) and **MLX90614** (for body and ambient temperature). Data is uploaded to **Azure IoT Hub** via secure MQTT, and also to **ThingSpeak** for real-time visualization.
 
 - Sensors: MAX30100, MLX90614
@@ -14,7 +14,7 @@ This module implements a wearable device for continuous biometric monitoring usi
 - Language: Arduino (C++)
 - Libraries: PubSubClient, ThingSpeak, Adafruit MLX90614
 
-### 2. sleep_stage_alarm/
+### 2. sleep_stage_alarm
 This module implements sleep phase detection using **heart rate variability** and **motion sensing (MPU6050)**. It activates a haptic vibration motor when light sleep is detected, enabling smart wake-ups. Bluetooth is used to stream real-time sleep stage data to a terminal or mobile device.
 
 - Sensors: MAX30100, MPU6050
@@ -24,7 +24,6 @@ This module implements sleep phase detection using **heart rate variability** an
 
 ---
 
-## Combined Use Case
 Together, both modules enable full-cycle wearable health tracking—**from daytime biometric data logging to overnight sleep optimization**—making this system suitable for personalized wellness devices, remote patient monitoring, or IoT-based research tools.
 
 ---
