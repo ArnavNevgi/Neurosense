@@ -58,7 +58,6 @@ File Structure
 - `biometric_uploader.ino` – Main Arduino code
 - `lib/` – Optional: Embedded libraries for portable use
 - `azure_thingspeak_setup.md` – Configuration for cloud services
-- `schematic.png` – Hardware wiring schematic
 - `README.md` – Project documentation
 
 Future Work
