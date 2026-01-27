@@ -6,7 +6,7 @@
 
 ## Project Structure
 
-### 1. biometric_monitor
+### 1. Biometric_monitor
 This module implements a wearable device for continuous biometric monitoring using the **MAX30100** (for heart rate and SpO₂) and **MLX90614** (for body and ambient temperature). Data is uploaded to **Azure IoT Hub** via secure MQTT, and also to **ThingSpeak** for real-time visualization.
 
 - Sensors: MAX30100, MLX90614
