@@ -23,7 +23,11 @@ const char* password = "69696969";
 const char* mqttServer = "MyProjectHub22.azure-devices.net";
 const int mqttPort = 8883;
 const char* deviceId = "1195";
-const char* sasToken = "SharedAccessSignature sr=MyProjectHub22.azure-devices.net%2Fdevices%2F1195&sig=pBIxloNUqwo8Ia8uF50YTw652cKbHLXooQkDXL3qJvc%3D&se=1732436672";
+
+// ⚠️ REPLACE WITH NEW TOKEN
+const char* sasToken =
+"SharedAccessSignature sr=MyProjectHub22.azure-devices.net%2Fdevices%2F1195&sig=REPLACE_ME&se=REPLACE_ME";
+
 const char* mqttTopic = "devices/1195/messages/events/";
 
 WiFiClientSecure espClient;
@@ -32,20 +36,38 @@ WiFiClient thingSpeakClient;
 
 // ThingSpeak Config
 unsigned long myChannelNumber = 2669052;
-const char* myWriteAPIKey = "X472RER1LA9F60YU"; // Updated key
+const char* myWriteAPIKey = "X472RER1LA9F60YU";
 
 // Timers
 uint32_t lastUpload = 0;
-#define REPORT_INTERVAL_MS 5000
+#define REPORT_INTERVAL_MS 15000   // ThingSpeak minimum = 15 sec
 
 // Beat detection callback
 void onBeatDetected() {
   Serial.println("Beat detected.");
 }
 
+// MQTT reconnect logic
+void reconnectMQTT() {
+  while (!mqttClient.connected()) {
+    Serial.println("Reconnecting to Azure IoT Hub...");
+    String username = String(mqttServer) + "/" + deviceId + "/?api-version=2021-04-12";
+
+    if (mqttClient.connect(deviceId, username.c_str(), sasToken)) {
+      Serial.println("Reconnected to Azure.");
+    } else {
+      Serial.print("Retry failed, rc=");
+      Serial.println(mqttClient.state());
+      delay(5000);
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
-  Wire.begin(D2, D1); // ESP8266: SDA = D2, SCL = D1
+
+  // I2C (NodeMCU pins)
+  Wire.begin(D2, D1); // SDA = D2, SCL = D1
 
   // MLX90614 initialization
   Serial.print("Initializing temperature sensor... ");
@@ -74,32 +96,35 @@ void setup() {
   }
   Serial.println("\nWiFi connected. IP: " + WiFi.localIP().toString());
 
-  // MQTT (TLS) for Azure
-  espClient.setInsecure(); // for development without cert
+  // Azure MQTT TLS (dev mode)
+  espClient.setInsecure();  // Replace with CA cert for production
   mqttClient.setServer(mqttServer, mqttPort);
-  String username = String(mqttServer) + "/" + deviceId + "/?api-version=2021-04-12";
 
-  Serial.println("Connecting to Azure IoT Hub...");
-  if (mqttClient.connect(deviceId, username.c_str(), sasToken)) {
-    Serial.println("Connected to Azure IoT Hub.");
-  } else {
-    Serial.print("MQTT connection failed. Code: ");
-    Serial.println(mqttClient.state());
-    while (1);
-  }
+  reconnectMQTT();
 
   // ThingSpeak initialization
   ThingSpeak.begin(thingSpeakClient);
 }
 
 void loop() {
-  pox.update(); // Update HR and SpO2
+  // Maintain MQTT connection
+  if (!mqttClient.connected()) {
+    reconnectMQTT();
+  }
+  mqttClient.loop();
 
-  // Read current values
+  // Update MAX30100
+  pox.update();
+
+  // Read sensors
   bpm = pox.getHeartRate();
   spo2 = pox.getSpO2();
   temp_obj = mlx.readObjectTempC();
   temp_amb = mlx.readAmbientTempC();
+
+  // Sanity filtering
+  if (bpm < 30 || bpm > 200) bpm = 0;
+  if (spo2 < 70 || spo2 > 100) spo2 = 0;
 
   // Display data
   Serial.println("------ Live Data ------");
@@ -107,9 +132,10 @@ void loop() {
   Serial.printf("Object Temp: %.2f°C | Ambient Temp: %.2f°C\n", temp_obj, temp_amb);
   Serial.println("------------------------");
 
-  // Upload every 5 seconds
+  // Upload every 15 seconds
   if (millis() - lastUpload > REPORT_INTERVAL_MS) {
-    // Format payload for Azure IoT Hub
+
+    // Azure payload
     String payload = String("{\"BPM\":") + bpm +
                      ",\"SpO2\":" + spo2 +
                      ",\"ObjectTemp\":" + temp_obj +
@@ -127,8 +153,8 @@ void loop() {
     ThingSpeak.setField(2, spo2);
     ThingSpeak.setField(3, temp_obj);
     ThingSpeak.setField(4, temp_amb);
-    int status = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
 
+    int status = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
     if (status == 200) {
       Serial.println("Data sent to ThingSpeak.");
     } else {
@@ -138,6 +164,5 @@ void loop() {
     lastUpload = millis();
   }
 
-  mqttClient.loop(); // Keep MQTT connection alive
-  delay(100);         // Avoid loop hogging
+  delay(100);
 }
