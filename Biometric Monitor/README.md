@@ -1,79 +1,112 @@
-NeuroSense – Biometric Health Monitor
+# NeuroSense Biometric Monitor
 
-This project implements a wearable biometric monitoring system using the ESP8266 microcontroller. It collects and transmits real-time physiological data such as heart rate, SpO₂ (oxygen saturation), and body temperature to cloud platforms for storage and visualization.
+ESP8266 firmware for reading biometric and temperature sensors, then publishing telemetry to Azure IoT Hub and ThingSpeak.
 
-Overview
+This module is for prototyping only. It is not for medical use or clinical monitoring.
 
-The biometric monitor is part of the NeuroSense suite, designed to support continuous health monitoring using low-cost sensors. Data is captured from the body through integrated sensors and uploaded to both Azure IoT Hub (for secure telemetry streaming) and ThingSpeak (for real-time visualization and analytics).
+## Implementation
 
-Features
+- Main file: `Biometric_Monitor/Biometric_Monitor.ino`
+- Board: ESP8266 NodeMCU
+- Sensors: MAX30100 and MLX90614
+- Cloud outputs:
+  - Azure IoT Hub via MQTT
+  - ThingSpeak via HTTP
+- Local output: Serial logs
 
-- Real-time monitoring of:
-  - Heart rate (BPM)
-  - SpO₂ (oxygen saturation)
-  - Object and ambient temperature
-- Secure MQTT data transmission to Azure IoT Hub
-- HTTP API integration with ThingSpeak
-- Lightweight and battery-operable design for wearable use
+The current Azure client still uses development-only TLS mode via `espClient.setInsecure()`. Add CA certificate validation before production deployment.
 
-Hardware Requirements
+## Current Behavior
 
-| Component               | Description                               |
-|------------------------|-------------------------------------------|
-| ESP8266 NodeMCU        | Microcontroller with Wi-Fi                |
-| MAX30100               | Pulse oximeter (HR + SpO₂) sensor         |
-| MLX90614               | IR-based object and ambient temp sensor   |
-| LiPo battery + charger | Power supply (optional for portability)   |
+- Reads heart rate and SpO2 from MAX30100.
+- Reads object and ambient temperature from MLX90614.
+- Publishes Azure JSON telemetry with:
+  - BPM, SpO2, ObjectTemp, AmbientTemp
+  - `device_id`, `firmware_version`, `timestamp_ms`, `wifi_rssi`, `status_code`
+  - `mlx_ready`, `pox_ready`
+  - `hr_valid`, `spo2_valid`, `object_temp_valid`, `ambient_temp_valid`
+- Sends ThingSpeak numeric fields:
+  - Field 1: BPM
+  - Field 2: SpO2
+  - Field 3: ObjectTemp
+  - Field 4: AmbientTemp
+  - Field 5: HR validity, 1 or 0
+  - Field 6: SpO2 validity, 1 or 0
+  - Field 7: status code
+  - Field 8: Wi-Fi RSSI, or -127 when offline
+- Uses bounded Wi-Fi connection attempts and periodic Wi-Fi retry.
+- Uses MQTT retry backoff instead of a permanent reconnect loop.
+- Uses `mlxReady` and `poxReady` flags so sensor init failures do not hard-lock the firmware.
 
-Wiring Summary
+## Wiring
 
-- **MAX30100 & MLX90614** share the I²C bus:
-  - SDA → D2 (GPIO4)
-  - SCL → D1 (GPIO5)
-- Power from 3.3V or USB
+| Component | ESP8266 NodeMCU Pin | Notes |
+| --- | --- | --- |
+| MAX30100 SDA | D2 / GPIO4 | Shared I2C |
+| MAX30100 SCL | D1 / GPIO5 | Shared I2C |
+| MLX90614 SDA | D2 / GPIO4 | Shared I2C |
+| MLX90614 SCL | D1 / GPIO5 | Shared I2C |
+| Sensor VCC | 3.3V | Check breakout requirements |
+| Sensor GND | GND | Common ground |
 
-Software Stack
+Use suitable I2C pullups for your sensor breakout boards.
 
-- Arduino framework (C/C++)
-- MQTT client via PubSubClient
-- Secure connection using TLS over Wi-Fi
-- ThingSpeak HTTP API
-- Libraries used:
-  - `MAX30100_PulseOximeter`
-  - `Adafruit_MLX90614`
-  - `ThingSpeak`
-  - `ESP8266WiFi`
+## Required Software
 
-Cloud Architecture
+Board package:
 
-- **Azure IoT Hub** receives JSON telemetry via MQTT over TLS
-- **ThingSpeak** receives periodic updates using field mappings:
-  - Field 1: Heart Rate
-  - Field 2: SpO₂
-  - Field 3: Object Temperature
-  - Field 4: Ambient Temperature
+- ESP8266 platform, NodeMCU 1.0 / ESP-12E compatible target
 
-File Structure
+Libraries:
 
-- `biometric_uploader.ino` – Main Arduino code
-- `lib/` – Optional: Embedded libraries for portable use
-- `azure_thingspeak_setup.md` – Configuration for cloud services
-- `README.md` – Project documentation
+- `MAX30100lib` by OXullo Intersecans, vendored under `Biometric Monitor/lib/MAX30100_PulseOximeter/Arduino-MAX30100-master`
+- `Adafruit MLX90614 Library`
+- `Adafruit BusIO`
+- `PubSubClient`
+- `ThingSpeak`
 
-- Remeber to update
+Core-provided libraries:
 
-| Field             | Value                       |
-| ----------------- | --------------------------- |
-| `ssid`            | Your Wi-Fi name             |
-| `password`        | Your Wi-Fi password         |
-| `mqttServer`      | Azure IoT Hub name          |
-| `sasToken`        | Your generated SAS token    |
-| `deviceId`        | Registered device ID        |
-| `myWriteAPIKey`   | Their ThingSpeak write key  |
-| `myChannelNumber` | Their ThingSpeak channel ID |
+- `Wire`
+- `SPI`
+- `ESP8266WiFi`
+- `WiFiClientSecure`
 
-Future Work
+## Secrets Setup
 
-- Add onboard alerts using vibration or LEDs
-- Integrate SD card logging for offline data backup
-- Deploy ML-based anomaly detection for health trends
+For PlatformIO:
+
+```powershell
+Copy-Item include\secrets.h.example include\secrets.h
+```
+
+Edit only `include/secrets.h` with local values. Do not commit it.
+
+For Arduino IDE, if the nested sketch cannot find the repo-level `include/secrets.h`, copy the same local file into `Biometric Monitor/Biometric_Monitor/secrets.h`.
+
+## Build
+
+From the repo root:
+
+```powershell
+pio run -e esp8266_biometric_monitor
+```
+
+## Upload
+
+With PlatformIO, connect the ESP8266 board and run:
+
+```powershell
+pio run -e esp8266_biometric_monitor -t upload
+```
+
+With Arduino IDE, open `Biometric_Monitor/Biometric_Monitor.ino`, select an ESP8266 NodeMCU-compatible board, install the required libraries, configure local secrets, and upload.
+
+## Troubleshooting
+
+- `MAX30100_PulseOximeter.h` not found: install `MAX30100lib` or make sure the vendored library is available to your build system.
+- `Adafruit_MLX90614.h` not found: install the Adafruit MLX90614 library and Adafruit BusIO.
+- Wi-Fi does not connect: check `include/secrets.h`; firmware will continue offline and retry.
+- Azure publish fails: check IoT Hub host, device ID, SAS token expiry, and MQTT topic.
+- TLS warning: current firmware uses development-only TLS mode. Add CA validation before production use.
+- ThingSpeak update fails: check channel number, write key, network connectivity, and ThingSpeak rate limits.

@@ -1,0 +1,9 @@
+.pio/
+include/secrets.h
+secrets.h
+*.pem
+*.key
+*.crt
+*.der
+*.p12
+*.env
